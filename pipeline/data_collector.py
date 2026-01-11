@@ -41,17 +41,19 @@ class DataCollector:
     async def initialize(self) -> bool:
         """
         Initialize the collector by fetching available trading pairs
-        Tries Binance first, falls back to Bybit if blocked
+        Tries exchanges first, falls back to CoinGecko-only mode if all fail
         
         Returns:
             True if initialization successful
         """
+        self._use_bybit_primary = False
+        self._coingecko_only = False
+        
+        # Try Binance first
         try:
-            # Try Binance first
             self._binance_pairs = await self.binance.get_usdt_pairs()
             if self._binance_pairs and len(self._binance_pairs) > 0:
                 logger.info(f"Initialized with {len(self._binance_pairs)} Binance USDT pairs")
-                self._use_bybit_primary = False
                 return True
         except Exception as e:
             logger.warning(f"Binance initialization failed (may be region blocked): {e}")
@@ -60,18 +62,25 @@ class DataCollector:
         try:
             bybit_pairs = await self.bybit.get_usdt_pairs()
             if bybit_pairs and len(bybit_pairs) > 0:
-                self._binance_pairs = bybit_pairs  # Use same format
+                self._binance_pairs = bybit_pairs
                 self._use_bybit_primary = True
                 logger.info(f"Using Bybit as primary source with {len(self._binance_pairs)} pairs")
                 return True
         except Exception as e:
-            logger.error(f"Bybit initialization also failed: {e}")
+            logger.warning(f"Bybit initialization also failed: {e}")
         
-        logger.error("Failed to initialize any exchange")
-        return False
+        # Final fallback: CoinGecko only mode
+        logger.warning("All exchanges blocked. Using CoinGecko-only mode.")
+        self._coingecko_only = True
+        self._binance_pairs = []  # Will use CoinGecko IDs instead
+        return True  # Still return True to continue with CoinGecko
     
     def _get_binance_symbol(self, coingecko_symbol: str) -> Optional[str]:
         """Convert CoinGecko symbol to Binance trading pair"""
+        if self._coingecko_only:
+            # In CoinGecko-only mode, return symbol as-is
+            return f"{coingecko_symbol.upper()}USDT"
+        
         binance_symbol = f"{coingecko_symbol.upper()}USDT"
         if self._binance_pairs and binance_symbol in self._binance_pairs:
             return binance_symbol
@@ -85,12 +94,25 @@ class DataCollector:
             limit: Number of coins to fetch
             
         Returns:
-            List of coin data with Binance symbol mapping
+            List of coin data with trading symbol mapping
         """
         raw_coins = await self.coingecko.get_top_coins(limit)
         coins = self.coingecko.parse_top_coins(raw_coins)
         
-        # Add Binance symbol mapping
+        # Add CoinGecko ID for OHLC fetching
+        for i, coin in enumerate(coins):
+            coin["coingecko_id"] = raw_coins[i].get("id") if i < len(raw_coins) else None
+        
+        if self._coingecko_only:
+            # In CoinGecko-only mode, use all coins
+            tradeable_coins = []
+            for coin in coins:
+                coin["binance_symbol"] = f"{coin['symbol'].upper()}USDT"
+                tradeable_coins.append(coin)
+            logger.info(f"CoinGecko-only mode: Using {len(tradeable_coins)}/{len(coins)} coins")
+            return tradeable_coins[:50]  # Limit to 50 to avoid rate limits
+        
+        # Normal mode: Filter for tradeable pairs
         tradeable_coins = []
         for coin in coins:
             binance_symbol = self._get_binance_symbol(coin["symbol"])
@@ -100,7 +122,7 @@ class DataCollector:
             else:
                 logger.debug(f"No Binance pair for {coin['symbol']}")
         
-        logger.info(f"Found {len(tradeable_coins)}/{len(coins)} tradeable coins on Binance Futures")
+        logger.info(f"Found {len(tradeable_coins)}/{len(coins)} tradeable coins")
         return tradeable_coins
     
     async def fetch_ohlcv(
@@ -108,7 +130,8 @@ class DataCollector:
         symbol: str,
         timeframe: str = "4h",
         limit: int = 500,
-        use_bybit_fallback: bool = True
+        use_bybit_fallback: bool = True,
+        coingecko_id: Optional[str] = None
     ) -> pd.DataFrame:
         """
         Fetch OHLCV data with fallback support
@@ -118,10 +141,29 @@ class DataCollector:
             timeframe: Timeframe (1h, 4h, 1d, 1w)
             limit: Number of candles to fetch
             use_bybit_fallback: Whether to use Bybit as fallback
+            coingecko_id: CoinGecko ID for CoinGecko-only mode
             
         Returns:
             DataFrame with OHLCV data
         """
+        # CoinGecko-only mode
+        if self._coingecko_only and coingecko_id:
+            try:
+                # CoinGecko OHLC only supports certain day ranges
+                days_map = {"1h": 1, "4h": 7, "1d": 30, "1w": 90}
+                days = days_map.get(timeframe, 30)
+                
+                ohlc = await self.coingecko.get_coin_ohlc(coingecko_id, days)
+                if ohlc:
+                    df = pd.DataFrame(ohlc, columns=["timestamp", "open", "high", "low", "close"])
+                    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+                    df["volume"] = 0  # CoinGecko OHLC doesn't have volume
+                    df["source"] = "coingecko"
+                    return df
+            except Exception as e:
+                logger.warning(f"CoinGecko OHLC failed for {coingecko_id}: {e}")
+            return pd.DataFrame()
+        
         # Try Binance first
         try:
             df = await self.binance.get_ohlcv_df(symbol, timeframe, limit)
@@ -183,7 +225,8 @@ class DataCollector:
         self,
         symbol: str,
         timeframes: Optional[List[str]] = None,
-        limit: int = 500
+        limit: int = 500,
+        coingecko_id: Optional[str] = None
     ) -> Dict[str, pd.DataFrame]:
         """
         Fetch OHLCV data for multiple timeframes
@@ -192,6 +235,7 @@ class DataCollector:
             symbol: Trading pair symbol
             timeframes: List of timeframes to fetch (default: all)
             limit: Number of candles per timeframe
+            coingecko_id: CoinGecko ID for CoinGecko-only mode
             
         Returns:
             Dict mapping timeframe to DataFrame
@@ -201,7 +245,7 @@ class DataCollector:
         
         results = {}
         for tf in timeframes:
-            df = await self.fetch_ohlcv(symbol, tf, limit)
+            df = await self.fetch_ohlcv(symbol, tf, limit, coingecko_id=coingecko_id)
             if not df.empty:
                 results[tf] = df
             else:
@@ -291,10 +335,11 @@ class DataCollector:
         
         for i, coin in enumerate(coins):
             symbol = coin["binance_symbol"]
+            coingecko_id = coin.get("coingecko_id")
             logger.info(f"[{i+1}/{len(coins)}] Fetching {symbol}...")
             
             ohlcv_data[symbol] = await self.fetch_multi_timeframe_data(
-                symbol, timeframes
+                symbol, timeframes, coingecko_id=coingecko_id
             )
             
             # Rate limiting
