@@ -1,0 +1,86 @@
+# Antigravity-Alpha Weekly Performance Report Workflow
+# Runs every Monday to generate and send performance reports
+
+name: Weekly Performance Report
+
+on:
+  schedule:
+    # Run every Monday at 09:00 UTC (18:00 KST)
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'Number of days to analyze'
+        required: false
+        default: '30'
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  weekly-report:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Download latest recommendations data
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: daily_analysis.yml
+          name: recommendations-*
+          path: data/performance/
+          if_no_artifact_found: warn
+        continue-on-error: true
+      
+      - name: Create data directories
+        run: |
+          mkdir -p data/performance
+          mkdir -p logs
+      
+      - name: Generate and send weekly report
+        env:
+          LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          python weekly_report.py --days ${{ github.event.inputs.days || '30' }}
+      
+      - name: Upload report logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: weekly-report-logs-${{ github.run_id }}
+          path: logs/
+          retention-days: 30
+      
+      - name: Send completion notification
+        if: success()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          curl -X POST -H "Content-Type: application/json" \
+            -d '{"content": "✅ 주간 성과 보고서가 성공적으로 생성되었습니다!"}' \
+            $DISCORD_WEBHOOK_URL
+      
+      - name: Send failure notification
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          curl -X POST -H "Content-Type: application/json" \
+            -d '{"content": "❌ 주간 성과 보고서 생성에 실패했습니다. GitHub Actions 로그를 확인해주세요."}' \
+            $DISCORD_WEBHOOK_URL

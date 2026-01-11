@@ -1,0 +1,67 @@
+# Antigravity-Alpha Daily Analysis Workflow
+# Runs daily to analyze top coins and send recommendations to Discord
+
+name: Daily Coin Analysis
+
+on:
+  schedule:
+    # Run every day at 00:00 UTC (09:00 KST)
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      coin_limit:
+        description: 'Number of coins to analyze'
+        required: false
+        default: '100'
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  daily-analysis:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Create data directories
+        run: |
+          mkdir -p data/performance
+          mkdir -p logs
+      
+      - name: Run daily analysis
+        env:
+          LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          python main.py --mode full --limit ${{ github.event.inputs.coin_limit || '100' }} --min-score 60
+      
+      - name: Upload logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: analysis-logs-${{ github.run_id }}
+          path: logs/
+          retention-days: 7
+      
+      - name: Upload recommendations data
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: recommendations-${{ github.run_id }}
+          path: data/performance/
+          retention-days: 30

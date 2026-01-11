@@ -1,0 +1,73 @@
+# Antigravity-Alpha - Smart Coin Analysis System
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+ENV/
+env/
+.env.local
+
+# Environment variables (KEEP .env.example, ignore actual .env)
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Logs
+logs/
+*.log
+
+# Database
+*.db
+*.sqlite3
+data/*.db
+
+# Artifacts
+*.pyc
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Performance data (optional - remove this line if you want to track)
+# data/performance/
+
+# Temporary files
+*.tmp
+*.temp
