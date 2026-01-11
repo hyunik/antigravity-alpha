@@ -1,7 +1,7 @@
-# Antigravity-Alpha Daily Analysis Workflow
-# Runs daily to analyze top coins and send recommendations to Discord
+# Antigravity-Alpha Daily HIGH CONFIDENCE Alerts
+# Only sends alerts for 80+ score signals
 
-name: Daily Coin Analysis
+name: Daily High Confidence Alerts
 
 on:
   schedule:
@@ -13,12 +13,16 @@ on:
         description: 'Number of coins to analyze'
         required: false
         default: '100'
+      min_score:
+        description: 'Minimum score for alerts (default: 80 for HIGH confidence)'
+        required: false
+        default: '80'
 
 env:
   PYTHON_VERSION: '3.11'
 
 jobs:
-  daily-analysis:
+  high-confidence-alerts:
     runs-on: ubuntu-latest
     
     steps:
@@ -41,20 +45,30 @@ jobs:
           mkdir -p data/performance
           mkdir -p logs
       
-      - name: Run daily analysis
+      - name: Download recommendations data
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: daily_analysis.yml
+          name: recommendations-*
+          path: data/performance/
+          if_no_artifact_found: warn
+        continue-on-error: true
+      
+      - name: Run HIGH CONFIDENCE analysis (80+ score only)
         env:
           LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          python main.py --mode full --limit ${{ github.event.inputs.coin_limit || '100' }} --min-score 60
+          echo "🔍 Analyzing top coins - HIGH CONFIDENCE filter (80+ score)..."
+          python main.py --mode full --limit ${{ github.event.inputs.coin_limit || '100' }} --min-score ${{ github.event.inputs.min_score || '80' }}
       
       - name: Upload logs
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: analysis-logs-${{ github.run_id }}
+          name: daily-logs-${{ github.run_id }}
           path: logs/
           retention-days: 7
       

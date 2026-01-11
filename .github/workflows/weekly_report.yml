@@ -1,18 +1,18 @@
-# Antigravity-Alpha Weekly Performance Report Workflow
-# Runs every Monday to generate and send performance reports
+# Antigravity-Alpha Weekly Performance Report
+# Runs every Monday 9:00 AM KST - includes weekly signal performance
 
 name: Weekly Performance Report
 
 on:
   schedule:
-    # Run every Monday at 09:00 UTC (18:00 KST)
-    - cron: '0 9 * * 1'
+    # Run every Monday at 00:00 UTC (09:00 KST)
+    - cron: '0 0 * * 1'
   workflow_dispatch:
     inputs:
       days:
         description: 'Number of days to analyze'
         required: false
-        default: '30'
+        default: '7'
 
 env:
   PYTHON_VERSION: '3.11'
@@ -50,14 +50,15 @@ jobs:
           mkdir -p data/performance
           mkdir -p logs
       
-      - name: Generate and send weekly report
+      - name: Generate weekly report with performance analysis
         env:
           LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          python weekly_report.py --days ${{ github.event.inputs.days || '30' }}
+          echo "📊 Generating Weekly Performance Report..."
+          python weekly_report.py --days ${{ github.event.inputs.days || '7' }}
       
       - name: Upload report logs
         uses: actions/upload-artifact@v4
@@ -67,13 +68,13 @@ jobs:
           path: logs/
           retention-days: 30
       
-      - name: Send completion notification
+      - name: Send success notification
         if: success()
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           curl -X POST -H "Content-Type: application/json" \
-            -d '{"content": "✅ 주간 성과 보고서가 성공적으로 생성되었습니다!"}' \
+            -d '{"content": "✅ 주간 성과 보고서가 성공적으로 생성되었습니다! (매주 월요일 09:00 KST)"}' \
             $DISCORD_WEBHOOK_URL
       
       - name: Send failure notification
@@ -82,5 +83,5 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           curl -X POST -H "Content-Type: application/json" \
-            -d '{"content": "❌ 주간 성과 보고서 생성에 실패했습니다. GitHub Actions 로그를 확인해주세요."}' \
+            -d '{"content": "❌ 주간 성과 보고서 생성 실패. GitHub Actions 로그를 확인해주세요."}' \
             $DISCORD_WEBHOOK_URL

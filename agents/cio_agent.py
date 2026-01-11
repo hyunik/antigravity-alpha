@@ -70,6 +70,12 @@ Scoring Guidelines:
 - Score 60-79: Good technical setup but some data gaps - Scale-in approach
 - Score <60: Insufficient confluence - Pass on this trade
 
+**PERFORMANCE-BASED LEARNING**:
+Based on historical performance analysis:
+{performance_insights}
+
+Apply these insights to improve your judgment accuracy.
+
 Always provide:
 - Clear direction (LONG/SHORT)
 - Specific entry zones with justification
@@ -125,6 +131,60 @@ Format your response as JSON with the following structure:
     def __init__(self):
         self.provider = settings.llm.provider
         self._client = None
+        self._performance_insights = self._load_performance_insights()
+    
+    def _load_performance_insights(self) -> str:
+        """Load performance insights from historical data for LLM learning"""
+        try:
+            from analysis.performance_tracker import PerformanceTracker
+            
+            tracker = PerformanceTracker()
+            tracker.load_recommendations()
+            
+            if len(tracker.recommendations) < 5:
+                return "- Not enough historical data yet. Use standard judgment."
+            
+            stats = tracker.calculate_stats(days=30)
+            
+            insights = []
+            
+            # Overall performance
+            if stats.win_rate > 0:
+                insights.append(f"- Overall win rate: {stats.win_rate:.1f}% (higher score = better accuracy)")
+            
+            # Conviction-based insights
+            if stats.by_conviction:
+                for conv, data in stats.by_conviction.items():
+                    if data.get("win_rate", 0) >= 70:
+                        insights.append(f"- {conv} conviction signals have {data['win_rate']:.0f}% win rate - RELIABLE")
+                    elif data.get("win_rate", 0) < 50:
+                        insights.append(f"- {conv} conviction signals underperform ({data['win_rate']:.0f}%) - BE MORE SELECTIVE")
+            
+            # Direction-based insights
+            if stats.by_direction:
+                for direction, data in stats.by_direction.items():
+                    insights.append(f"- {direction} trades: {data['win_rate']:.0f}% win rate, avg P&L {data['avg_pnl']:+.1f}%")
+            
+            # Pattern effectiveness
+            if stats.hit_tp1_count > 0:
+                tp1_rate = (stats.hit_tp1_count / stats.total_recommendations) * 100
+                insights.append(f"- TP1 hit rate: {tp1_rate:.0f}% - Targets are {'realistic' if tp1_rate > 50 else 'too aggressive'}")
+            
+            # SL analysis
+            if stats.hit_sl_count > 0:
+                sl_rate = (stats.hit_sl_count / stats.total_recommendations) * 100
+                if sl_rate > 30:
+                    insights.append(f"- SL hit rate {sl_rate:.0f}% is high - Consider wider stops or better entry timing")
+            
+            return "\n".join(insights) if insights else "- Standard performance. Apply normal judgment."
+            
+        except Exception as e:
+            logger.debug(f"Could not load performance insights: {e}")
+            return "- Performance data unavailable. Use standard judgment."
+    
+    def _get_system_prompt(self) -> str:
+        """Get system prompt with performance insights"""
+        return self.SYSTEM_PROMPT.format(performance_insights=self._performance_insights)
     
     def _get_client(self):
         """Get or initialize LLM client"""
@@ -218,7 +278,7 @@ Format your response as JSON with the following structure:
             response = client.chat.completions.create(
                 model=settings.llm.openai_model,
                 messages=[
-                    {"role": "system", "content": self.SYSTEM_PROMPT},
+                    {"role": "system", "content": self._get_system_prompt()},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3,
@@ -237,7 +297,7 @@ Format your response as JSON with the following structure:
         client = self._get_client()
         
         def sync_call():
-            full_prompt = f"{self.SYSTEM_PROMPT}\n\n{prompt}"
+            full_prompt = f"{self._get_system_prompt()}\n\n{prompt}"
             response = client.generate_content(full_prompt)
             return response.text
         
