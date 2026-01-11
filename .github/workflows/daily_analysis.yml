@@ -12,11 +12,11 @@ on:
       coin_limit:
         description: 'Number of coins to analyze'
         required: false
-        default: '100'
+        default: '20'
       min_score:
-        description: 'Minimum score for alerts (default: 80 for HIGH confidence)'
+        description: 'Minimum score for alerts (default: 60)'
         required: false
-        default: '80'
+        default: '60'
 
 env:
   PYTHON_VERSION: '3.11'

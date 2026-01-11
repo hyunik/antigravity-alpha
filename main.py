@@ -88,6 +88,11 @@ class AntigravityAlpha:
             logger.info("Step 1: Initializing data collector...")
             await self.data_collector.initialize()
             
+            # Check if in CoinGecko-only mode (exchanges blocked)
+            is_coingecko_only = getattr(self.data_collector, '_coingecko_only', False)
+            if is_coingecko_only:
+                logger.warning("Running in CoinGecko-only mode (exchanges blocked)")
+            
             logger.info(f"Step 2: Collecting data for top {coin_limit} coins...")
             coins, ohlcv_data = await self.data_collector.collect_all_data(
                 limit=coin_limit,
@@ -112,8 +117,11 @@ class AntigravityAlpha:
                     continue
                 
                 try:
-                    # Get market data
-                    market_data = await self.data_collector.fetch_market_data(symbol)
+                    # Get market data (skip in CoinGecko-only mode)
+                    if is_coingecko_only:
+                        market_data = {"open_interest": 0, "funding_rate": 0}
+                    else:
+                        market_data = await self.data_collector.fetch_market_data(symbol)
                     
                     score = self.scoring_engine.score_coin(
                         symbol=symbol,
@@ -159,16 +167,25 @@ class AntigravityAlpha:
                         recommendations.append(rec)
             
             # Step 5: Send to Discord
-            if send_to_discord and recommendations:
+            if send_to_discord:
                 logger.info("Step 6: Sending to Discord...")
                 if settings.discord.webhook_url:
-                    results = await self.discord_bot.send_batch(
-                        recommendations,
-                        total_analyzed=len(coins),
-                        include_summary=True,
-                        max_recommendations=10
-                    )
-                    logger.info(f"Discord: {results['success']} sent, {results['failed']} failed")
+                    if recommendations:
+                        results = await self.discord_bot.send_batch(
+                            recommendations,
+                            total_analyzed=len(coins),
+                            include_summary=True,
+                            max_recommendations=10
+                        )
+                        logger.info(f"Discord: {results['success']} sent, {results['failed']} failed")
+                    else:
+                        # Send notification even when no recommendations
+                        await self.discord_bot.send_text(
+                            f"📊 분석 완료: {len(coins)}개 코인 분석, {len(qualified)}개 기준 충족\n"
+                            f"⚠️ 고신뢰도({min_score}점 이상) 추천 없음\n"
+                            f"{'🌐 CoinGecko 모드 (거래소 차단됨)' if is_coingecko_only else ''}"
+                        )
+                        logger.info("Discord: Sent no-recommendation status")
                 else:
                     logger.warning("Discord webhook not configured, skipping send")
             
@@ -194,6 +211,14 @@ class AntigravityAlpha:
             
         except Exception as e:
             logger.error(f"Analysis failed: {e}")
+            # Send error to Discord
+            if send_to_discord and settings.discord.webhook_url:
+                try:
+                    await self.discord_bot.send_text(
+                        f"❌ 분석 실패: {str(e)[:200]}"
+                    )
+                except:
+                    pass
             raise
     
     async def run_quick_scan(self, symbol: str) -> Optional[CoinScore]:
