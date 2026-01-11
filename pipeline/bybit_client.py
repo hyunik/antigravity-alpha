@@ -58,6 +58,21 @@ class BybitClient:
         result = await self._request("/v5/market/tickers", {"category": category})
         return result.get("list", []) if result else []
     
+    async def get_usdt_pairs(self, category: str = "linear") -> List[str]:
+        """
+        Get list of USDT perpetual trading pairs
+        
+        Returns:
+            List of symbol names (e.g., ['BTCUSDT', 'ETHUSDT', ...])
+        """
+        tickers = await self.get_tickers(category)
+        pairs = [
+            t["symbol"] for t in tickers 
+            if t.get("symbol", "").endswith("USDT")
+        ]
+        logger.info(f"Found {len(pairs)} USDT pairs on Bybit")
+        return pairs
+    
     async def get_klines(
         self,
         symbol: str,

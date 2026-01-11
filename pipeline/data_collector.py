@@ -41,18 +41,34 @@ class DataCollector:
     async def initialize(self) -> bool:
         """
         Initialize the collector by fetching available trading pairs
+        Tries Binance first, falls back to Bybit if blocked
         
         Returns:
             True if initialization successful
         """
         try:
-            # Get available Binance futures pairs
+            # Try Binance first
             self._binance_pairs = await self.binance.get_usdt_pairs()
-            logger.info(f"Initialized with {len(self._binance_pairs)} Binance USDT pairs")
-            return True
+            if self._binance_pairs and len(self._binance_pairs) > 0:
+                logger.info(f"Initialized with {len(self._binance_pairs)} Binance USDT pairs")
+                self._use_bybit_primary = False
+                return True
         except Exception as e:
-            logger.error(f"Failed to initialize DataCollector: {e}")
-            return False
+            logger.warning(f"Binance initialization failed (may be region blocked): {e}")
+        
+        # Fallback to Bybit
+        try:
+            bybit_pairs = await self.bybit.get_usdt_pairs()
+            if bybit_pairs and len(bybit_pairs) > 0:
+                self._binance_pairs = bybit_pairs  # Use same format
+                self._use_bybit_primary = True
+                logger.info(f"Using Bybit as primary source with {len(self._binance_pairs)} pairs")
+                return True
+        except Exception as e:
+            logger.error(f"Bybit initialization also failed: {e}")
+        
+        logger.error("Failed to initialize any exchange")
+        return False
     
     def _get_binance_symbol(self, coingecko_symbol: str) -> Optional[str]:
         """Convert CoinGecko symbol to Binance trading pair"""
