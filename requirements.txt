@@ -26,7 +26,8 @@ apscheduler>=3.10.0
 
 # Technical Analysis
 ta>=0.10.0
-pandas-ta>=0.4.67b0
+# Use 'ta' library instead (pandas-ta requires Python 3.12+)
+# ta>=0.10.0 is already included above
 
 # Utilities
 pydantic>=2.0.0
