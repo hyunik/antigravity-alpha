@@ -181,12 +181,19 @@ class AntigravityAlpha:
                         logger.info(f"Discord: {results['success']} sent, {results['failed']} failed")
                     else:
                         # Send notification even when no recommendations
+                        # Include list of qualified coins for reference
+                        qualified_list = ""
+                        if qualified:
+                            qualified_names = [f"{s.symbol}({s.total_score:.0f}점/{s.direction})" for s in qualified[:10]]
+                            qualified_list = f"\n\n📋 **참고 - 기준 충족 코인:**\n" + ", ".join(qualified_names)
+                        
                         await self.discord_bot.send_text(
                             f"📊 분석 완료: {len(coins)}개 코인 분석, {len(qualified)}개 기준 충족\n"
-                            f"⚠️ 고신뢰도({min_score}점 이상) 추천 없음\n"
+                            f"⚠️ CIO 최종 추천 없음 (LLM이 진입 부적합 판단)\n"
                             f"{'🌐 CoinGecko 모드 (거래소 차단됨)' if is_coingecko_only else ''}"
+                            f"{qualified_list}"
                         )
-                        logger.info("Discord: Sent no-recommendation status")
+                        logger.info("Discord: Sent no-recommendation status with qualified list")
                 else:
                     logger.warning("Discord webhook not configured, skipping send")
             
