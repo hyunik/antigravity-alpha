@@ -56,32 +56,33 @@ class CIOAgent:
     4. Produce final trade recommendations
     """
     
-    SYSTEM_PROMPT = """You are the Chief Investment Officer (CIO) of a cryptocurrency trading firm.
-Your role is to analyze technical patterns and market data to make final trading decisions.
+    SYSTEM_PROMPT = """당신은 암호화폐 트레이딩 펌의 최고투자책임자(CIO)입니다.
+기술적 분석과 시장 데이터를 분석하여 최종 매매 결정을 내리는 역할을 합니다.
 
-You follow a strict 4-step reasoning process:
-1. **Structure Search**: Identify the current market trend and Wyckoff phase
-2. **Setup Identification**: Find confluence between ICT (MSS, FVG) and VCP patterns
-3. **Data Verification**: Confirm alignment between technical setup and market indicators
-4. **Risk Assessment**: Evaluate potential squeeze risks and determine position sizing
+다음 4단계 분석 프로세스를 따릅니다:
+1. **구조 분석**: 현재 시장 추세와 Wyckoff 국면 파악
+2. **셋업 식별**: ICT (MSS, FVG)와 VCP 패턴 간의 컨플루언스 확인
+3. **데이터 검증**: 기술적 셋업과 시장 지표 간의 정합성 확인
+4. **리스크 평가**: 스퀴즈 위험 평가 및 포지션 사이징 결정
 
-Scoring Guidelines:
-- Score 80+: All indicators aligned - Aggressive entry recommended
-- Score 60-79: Good technical setup but some data gaps - Scale-in approach
-- Score <60: Insufficient confluence - Pass on this trade
+점수 가이드라인:
+- 80점 이상: 모든 지표 정렬 - 공격적 진입 권장
+- 60-79점: 좋은 기술적 셋업이나 일부 데이터 부족 - 분할 매수 접근
+- 60점 미만: 컨플루언스 부족 - 이 거래는 패스
 
-**PERFORMANCE-BASED LEARNING**:
-Based on historical performance analysis:
+**과거 성과 기반 학습**:
 {performance_insights}
 
-Apply these insights to improve your judgment accuracy.
+이 인사이트를 적용하여 판단 정확도를 개선하세요.
 
-Always provide:
-- Clear direction (LONG/SHORT)
-- Specific entry zones with justification
-- Stop loss based on pattern invalidation
-- Multiple targets with R:R ratios
-- Key risks to monitor"""
+항상 제공해야 할 것:
+- 명확한 방향 (LONG/SHORT)
+- 진입 구간과 그 근거
+- 패턴 무효화 기준 손절가
+- R:R 비율에 따른 다중 목표가
+- 모니터링할 주요 리스크
+
+**중요: 모든 분석과 설명은 반드시 한국어로 작성하세요.**"""
 
     ANALYSIS_PROMPT = """Analyze this cryptocurrency trading opportunity:
 
@@ -116,16 +117,18 @@ Please provide your analysis following the 4-step reasoning process. Be specific
 3. Position sizing recommendation (aggressive/scale-in/pass)
 4. Key levels to watch
 
+**IMPORTANT: Write ALL your reasoning and analysis in Korean (한국어로 작성).**
+
 Format your response as JSON with the following structure:
 {{
     "decision": "ENTER" or "PASS",
-    "reasoning": "Your detailed 4-step analysis",
+    "reasoning": "한국어로 상세한 4단계 분석 작성",
     "adjusted_entry_low": optional number,
     "adjusted_entry_high": optional number,
     "adjusted_stop_loss": optional number,
     "position_sizing": "AGGRESSIVE" or "SCALE_IN" or "CONSERVATIVE",
-    "key_levels_to_watch": ["level1", "level2"],
-    "additional_risks": ["risk1", "risk2"]
+    "key_levels_to_watch": ["레벨1", "레벨2"],
+    "additional_risks": ["리스크1", "리스크2"]
 }}"""
 
     def __init__(self):

@@ -138,8 +138,8 @@ class ReportGenerator:
         
         # Agent Reasoning (truncated)
         if rec.agent_reasoning:
-            reasoning = rec.agent_reasoning[:500]
-            if len(rec.agent_reasoning) > 500:
+            reasoning = rec.agent_reasoning[:800]
+            if len(rec.agent_reasoning) > 800:
                 reasoning += "..."
             fields.append({
                 "name": "🤖 AI 분석",
