@@ -125,6 +125,38 @@ class DataCollector:
         logger.info(f"Found {len(tradeable_coins)}/{len(coins)} tradeable coins")
         return tradeable_coins
     
+    async def get_binance_coins(self, limit: int = 200) -> List[Dict]:
+        """
+        Get coins directly from Binance USDT perpetual pairs
+        
+        Args:
+            limit: Maximum number of coins to return
+            
+        Returns:
+            List of coin data with Binance symbols
+        """
+        if not self._binance_pairs:
+            logger.warning("No Binance pairs available, falling back to CoinGecko")
+            return await self.get_top_coins(limit)
+        
+        # Sort by symbol (you could also get volume data to sort by)
+        # For now, just use all available pairs
+        coins = []
+        for symbol in list(self._binance_pairs)[:limit]:
+            if symbol.endswith("USDT"):
+                base_symbol = symbol.replace("USDT", "")
+                coins.append({
+                    "symbol": base_symbol,
+                    "binance_symbol": symbol,
+                    "coingecko_id": None,  # Not needed for Binance mode
+                    "name": base_symbol,
+                    "market_cap_rank": None,
+                    "current_price": 0,  # Will be fetched from OHLCV
+                })
+        
+        logger.info(f"Using {len(coins)} Binance USDT pairs directly")
+        return coins
+    
     async def fetch_ohlcv(
         self,
         symbol: str,
@@ -308,7 +340,8 @@ class DataCollector:
     async def collect_all_data(
         self,
         limit: int = 200,
-        timeframes: Optional[List[str]] = None
+        timeframes: Optional[List[str]] = None,
+        use_binance_direct: bool = False
     ) -> Tuple[List[Dict], Dict[str, Dict[str, pd.DataFrame]]]:
         """
         Collect all data for top coins
@@ -316,6 +349,7 @@ class DataCollector:
         Args:
             limit: Number of top coins to collect
             timeframes: Timeframes to collect (default: 4h, 1d)
+            use_binance_direct: If True, use Binance pairs directly instead of CoinGecko
             
         Returns:
             Tuple of (coins_data, ohlcv_data)
@@ -325,9 +359,13 @@ class DataCollector:
         if timeframes is None:
             timeframes = ["4h", "1d"]
         
-        # Get top coins
-        logger.info(f"Fetching top {limit} coins from CoinGecko...")
-        coins = await self.get_top_coins(limit)
+        # Get coins based on mode
+        if use_binance_direct and self._binance_pairs and not self._coingecko_only:
+            logger.info(f"Fetching {limit} coins from Binance USDT pairs directly...")
+            coins = await self.get_binance_coins(limit)
+        else:
+            logger.info(f"Fetching top {limit} coins from CoinGecko...")
+            coins = await self.get_top_coins(limit)
         
         # Fetch OHLCV for each coin
         logger.info(f"Fetching OHLCV data for {len(coins)} coins...")

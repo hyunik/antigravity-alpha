@@ -96,7 +96,8 @@ class AntigravityAlpha:
             logger.info(f"Step 2: Collecting data for top {coin_limit} coins...")
             coins, ohlcv_data = await self.data_collector.collect_all_data(
                 limit=coin_limit,
-                timeframes=["4h", "1d"]
+                timeframes=["4h", "1d"],
+                use_binance_direct=not is_coingecko_only  # Use Binance directly when available
             )
             logger.info(f"Collected data for {len(coins)} coins")
             
