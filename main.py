@@ -147,17 +147,18 @@ class AntigravityAlpha:
             
             # Step 4: LLM Analysis (optional)
             recommendations: List[TradeRecommendation] = []
+            pass_reasons = {}  # Track why CIO passed on coins
             price_map = {coin["binance_symbol"]: coin["current_price"] for coin in coins}
             
             if use_llm and settings.llm.openai_api_key or settings.llm.gemini_api_key:
                 logger.info("Step 5: Running CIO Agent analysis...")
-                recommendations = await self.cio_agent.batch_analyze(
+                recommendations, pass_reasons = await self.cio_agent.batch_analyze(
                     qualified[:max_recommendations],
                     price_map,
                     min_score=min_score,
                     max_recommendations=max_recommendations
                 )
-                logger.info(f"CIO Agent produced {len(recommendations)} recommendations")
+                logger.info(f"CIO Agent produced {len(recommendations)} recommendations, {len(pass_reasons)} passed")
             else:
                 # Fallback: Create recommendations without LLM
                 logger.info("Step 5: Creating recommendations without LLM...")
@@ -187,13 +188,27 @@ class AntigravityAlpha:
                             qualified_names = [f"{s.symbol}({s.total_score:.0f}점/{s.direction})" for s in qualified[:10]]
                             qualified_list = f"\n\n📋 **참고 - 기준 충족 코인:**\n" + ", ".join(qualified_names)
                         
+                        # Add top coin's pass reason
+                        top_pass_reason = ""
+                        if pass_reasons:
+                            # Get highest scoring passed coin
+                            top_symbol = max(pass_reasons.keys(), key=lambda x: pass_reasons[x]["score"])
+                            top_info = pass_reasons[top_symbol]
+                            reason_text = top_info["reason"][:400]  # Limit length
+                            top_pass_reason = (
+                                f"\n\n🔍 **최고득점 코인 분석 (PASS):**\n"
+                                f"**{top_symbol}** ({top_info['score']:.0f}점/{top_info['direction']})\n"
+                                f"{reason_text}"
+                            )
+                        
                         await self.discord_bot.send_text(
                             f"📊 분석 완료: {len(coins)}개 코인 분석, {len(qualified)}개 기준 충족\n"
                             f"⚠️ CIO 최종 추천 없음 (LLM이 진입 부적합 판단)\n"
                             f"{'🌐 CoinGecko 모드 (거래소 차단됨)' if is_coingecko_only else ''}"
                             f"{qualified_list}"
+                            f"{top_pass_reason}"
                         )
-                        logger.info("Discord: Sent no-recommendation status with qualified list")
+                        logger.info("Discord: Sent no-recommendation status with qualified list and pass reason")
                 else:
                     logger.warning("Discord webhook not configured, skipping send")
             

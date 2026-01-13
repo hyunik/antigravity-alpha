@@ -195,7 +195,7 @@ Format your response as JSON with the following structure:
             self._client = settings.get_llm_client()
         return self._client
     
-    async def analyze_coin(self, coin_score: CoinScore, current_price: float) -> Optional[TradeRecommendation]:
+    async def analyze_coin(self, coin_score: CoinScore, current_price: float) -> tuple:
         """
         Analyze a coin using LLM reasoning
         
@@ -204,12 +204,12 @@ Format your response as JSON with the following structure:
             current_price: Current market price
             
         Returns:
-            TradeRecommendation or None if analysis fails
+            Tuple of (TradeRecommendation or None, pass_reason or None)
         """
         # Skip low-conviction setups to save API calls
         if coin_score.total_score < 50:
             logger.debug(f"Skipping {coin_score.symbol} - score too low ({coin_score.total_score:.1f})")
-            return None
+            return (None, "점수가 너무 낮음 (50점 미만)")
         
         # Format prompt
         prompt = self.ANALYSIS_PROMPT.format(
@@ -241,21 +241,22 @@ Format your response as JSON with the following structure:
             response = await self._call_llm(prompt)
             
             if not response:
-                return self._create_fallback_recommendation(coin_score, current_price)
+                return (self._create_fallback_recommendation(coin_score, current_price), None)
             
             # Parse response
             parsed = self._parse_response(response)
             
             if parsed.get("decision") == "PASS":
-                logger.info(f"CIO Agent passed on {coin_score.symbol}: {parsed.get('reasoning', 'No reason given')[:100]}")
-                return None
+                pass_reason = parsed.get('reasoning', '분석 결과 진입 부적합')
+                logger.info(f"CIO Agent passed on {coin_score.symbol}: {pass_reason[:100]}")
+                return (None, pass_reason)
             
             # Create recommendation with potential adjustments
-            return self._create_recommendation(coin_score, current_price, parsed)
+            return (self._create_recommendation(coin_score, current_price, parsed), None)
             
         except Exception as e:
             logger.error(f"CIO Agent analysis failed for {coin_score.symbol}: {e}")
-            return self._create_fallback_recommendation(coin_score, current_price)
+            return (self._create_fallback_recommendation(coin_score, current_price), None)
     
     async def _call_llm(self, prompt: str) -> Optional[str]:
         """Call LLM API based on provider"""
@@ -393,7 +394,7 @@ Format your response as JSON with the following structure:
         price_map: Dict[str, float],
         min_score: float = 60,
         max_recommendations: int = 50
-    ) -> List[TradeRecommendation]:
+    ) -> tuple:
         """
         Analyze multiple coins and return top recommendations
         
@@ -404,7 +405,7 @@ Format your response as JSON with the following structure:
             max_recommendations: Maximum recommendations to return
             
         Returns:
-            List of TradeRecommendation sorted by score
+            Tuple of (List[TradeRecommendation], Dict[symbol -> pass_reason])
         """
         # Filter and sort by score
         qualified = sorted(
@@ -414,14 +415,23 @@ Format your response as JSON with the following structure:
         )[:max_recommendations]
         
         recommendations = []
+        pass_reasons = {}  # Track why coins were passed
+        
         for score in qualified:
             price = price_map.get(score.symbol, 0)
             if price > 0:
-                rec = await self.analyze_coin(score, price)
+                rec, reason = await self.analyze_coin(score, price)
                 if rec:
                     recommendations.append(rec)
+                elif reason:
+                    pass_reasons[score.symbol] = {
+                        "score": score.total_score,
+                        "direction": score.direction,
+                        "reason": reason
+                    }
         
-        return sorted(recommendations, key=lambda x: x.score, reverse=True)
+        sorted_recs = sorted(recommendations, key=lambda x: x.score, reverse=True)
+        return (sorted_recs, pass_reasons)
 
 
 async def test_cio_agent():
