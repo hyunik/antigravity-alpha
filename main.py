@@ -148,7 +148,18 @@ class AntigravityAlpha:
             # Step 4: LLM Analysis (optional)
             recommendations: List[TradeRecommendation] = []
             pass_reasons = {}  # Track why CIO passed on coins
-            price_map = {coin["binance_symbol"]: coin["current_price"] for coin in coins}
+            
+            # Build price map from coins OR from OHLCV data (for Binance direct mode)
+            price_map = {}
+            for coin in coins:
+                symbol = coin["binance_symbol"]
+                if coin.get("current_price", 0) > 0:
+                    price_map[symbol] = coin["current_price"]
+                elif symbol in ohlcv_data and "4h" in ohlcv_data[symbol]:
+                    # Get last close price from OHLCV data
+                    df = ohlcv_data[symbol]["4h"]
+                    if not df.empty:
+                        price_map[symbol] = float(df["close"].iloc[-1])
             
             if use_llm and settings.llm.openai_api_key or settings.llm.gemini_api_key:
                 logger.info("Step 5: Running CIO Agent analysis...")
